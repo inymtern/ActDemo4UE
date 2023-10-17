@@ -192,7 +192,9 @@ void AMyCharacter::DisableShootMode()
 	bShootMode = false;
 }
 
-void AMyCharacter::Hook()
+
+
+void AMyCharacter::LeftClick()
 {
 	if(bShootMode && RightWeaponType == ERightWeaponType::Hook)
 	{
@@ -220,6 +222,9 @@ void AMyCharacter::Hook()
 				GetCharacterMovement()->AddImpulse(FVector(ForwardVector.X, ForwardVector.Y, HookForceZ), false);
 			}
 		}
+	}else if(bShootMode && RightWeaponType == ERightWeaponType::Hook)
+	{
+		
 	}
 }
 
@@ -279,6 +284,10 @@ void AMyCharacter::ATK_01()
 		default: return;
 		}
 	}
+}
+
+void AMyCharacter::ATK_02()
+{
 }
 
 void AMyCharacter::Break_Atk_01()
@@ -531,11 +540,13 @@ void AMyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		EnhancedInputComponent->BindAction(ShootModeAction, ETriggerEvent::Completed, this, &AMyCharacter::DisableShootMode);
 
 		
-		EnhancedInputComponent->BindAction(HookAction, ETriggerEvent::Started, this, &AMyCharacter::Hook);
+		EnhancedInputComponent->BindAction(LeftClickAction, ETriggerEvent::Started, this, &AMyCharacter::LeftClick);
 
 		EnhancedInputComponent->BindAction(Skill_A_Action, ETriggerEvent::Started, this, &AMyCharacter::Skill_A);
 		
 		EnhancedInputComponent->BindAction(Atk_01_Action, ETriggerEvent::Started, this, &AMyCharacter::ATK_01);
+		
+		EnhancedInputComponent->BindAction(Atk_02_Action, ETriggerEvent::Started, this, &AMyCharacter::ATK_02);
 
 		
 	}

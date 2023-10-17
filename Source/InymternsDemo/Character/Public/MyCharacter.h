@@ -67,19 +67,15 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	UNiagaraComponent* AtkNiagara;
 	
-	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputMappingContext* DefaultMappingContext;
 
-	/** Jump Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* JumpAction;
 
-	/** Move Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* MoveAction;
 
-	/** Look Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* LookAction;
 	
@@ -90,18 +86,27 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	UInputAction* ShootModeAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* HookAction;
+	UInputAction* LeftClickAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* Skill_A_Action;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* Atk_01_Action;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* Atk_02_Action;
+
+	
 	
 
 	// move
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Move, meta = (AllowPrivateAccess = "true"))
 	bool bCanMove = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Move, meta = (AllowPrivateAccess = "true"))
+	float Max_Walk_Speed = 450.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Move, meta = (AllowPrivateAccess = "true"))
+	float Min_Walk_Speed = 250.f;
 	
 
 	// jump
@@ -147,7 +152,6 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	// skill_A
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
 	bool bSkillA_Active = false;
-
 	// 时停
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
 	bool bGlobalTimeSlow = false;
@@ -157,18 +161,15 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	// ATK_01
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	bool bAtk_01_Active = false;
+	// ATK_02
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	bool bAtk_02_Active = false;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	FVector FinalHitLocation;
 
 	
-	
 public:
-	// Sets default values for this character's properties
 	AMyCharacter();
-
-	const float Max_Walk_Speed = 450.f;
-	const float Min_Walk_Speed = 250.f;
-
 	// 通知蓝图显示ui
 	UPROPERTY(BlueprintAssignable)
 	FShowWidget OnShowWidget;
@@ -176,82 +177,65 @@ public:
 	FSkillBack OnSkillBack;
 
 protected:
-	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-	/** Called for movement input */
-	void Move(const FInputActionValue& Value);
-	/** Called for looking input */
-	void Look(const FInputActionValue& Value);
-	virtual void SpeedUp();
-	virtual void SpeedDown();
-	/** 跳跃 **/
-	virtual void MyJump(const FInputActionValue& Value) ;
-	// 瞄准模式
-	virtual void EnableShootMode();
-	virtual void DisableShootMode();
-	// 钩子
-	virtual void Hook();
-	// 一技能
-	virtual void Skill_A();
-	// 普通远程攻击
-	void ATK_01();
-	// 打断
-	void Break_Atk_01();
+	void Move(const FInputActionValue& Value); // 移动
+	void Look(const FInputActionValue& Value); // 视角
 	
+	virtual void SpeedUp(); // 加速
+	virtual void SpeedDown(); // 减速
+	
+	virtual void MyJump(const FInputActionValue& Value); // 按下跳跃
+	
+	virtual void EnableShootMode(); // 开启瞄准
+	virtual void DisableShootMode(); // 关闭瞄准
 
-	void EnterShootModeCallBack();
+	virtual void LeftClick(); // 按下左键
 	
-	void LeaveShootModeCallBack();
+	virtual void Skill_A();  // 按下Q技能
+	
+	void ATK_01(); // 按下 F 技能
+	void ATK_02(); // 按下 E 技能
+	
+	void Break_Atk_01(); // 打断 F
+	
+	void EnterShootModeCallBack(); // 完全进入瞄准模式回调
+	void LeaveShootModeCallBack(); // 完全离开瞄准模式回调
+	void EnableTimeSlow(ETimeSlowType Type); // 开启时停
+	void DisableTimeSlow(ETimeSlowType Type); // 关闭时停
 
-	void EnableTimeSlow(ETimeSlowType Type);
-	void DisableTimeSlow(ETimeSlowType Type);
-	
-	
-	
 
+
+	
+	void GetForwardAndRightVectors(FVector& ForwardVector, FVector& RightVector) const;
+	FVector GetActorForwardVector(const int Distance) const;
+	FVector GetControlForwardVector(const int Distance) const; 
+	bool HookLineTrace(FHitResult& HitResult); // 射线检测
 public:
 
-
-	// 可进行下次跳跃
 	UFUNCTION(BlueprintCallable)
-	void MyStopJumping() ;
+	void MyStopJumping();
 
 	// 落地了
 	UFUNCTION(BlueprintCallable)
 	void FallingDown();
-	
 
 	// 应用跳跃力
 	UFUNCTION(BlueprintCallable)
 	void ApplyJumpforce();
 
-	// 保持清除浮空
+	// 保持/清除浮空
 	UFUNCTION(BlueprintCallable)
-	void KeepAir(bool bKeep) ;
+	void KeepAir(bool bKeep);
 
 	UFUNCTION(BlueprintCallable)
-	void ApplyATK();
+	void ApplyATK(); // 触发ATK
 	
-	void GetForwardAndRightVectors(FVector& ForwardVector, FVector& RightVector) const;
+	
 
-	FVector GetActorForwardVector(const int Distance) const;
 
-	FVector GetControlForwardVector(const int Distance) const;
-
-	bool HookLineTrace(FHitResult& HitResult);
-
-	// Called every frame
+	
 	virtual void Tick(float DeltaTime) override;
-
-	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-	/** Returns CameraBoom subobject **/
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
-	
-	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
-
-
-
 };
