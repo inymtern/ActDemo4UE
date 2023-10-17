@@ -2,6 +2,8 @@
 
 
 #include "InymternsDemo/Character/Public/MyCharacter.h"
+
+#include "Enemy.h"
 #include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Camera/CameraComponent.h"
@@ -56,7 +58,6 @@ AMyCharacter::AMyCharacter()
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
 	
-	
 	// 发射线条
 	HookLine = CreateDefaultSubobject<UNiagaraComponent>(TEXT("HookLine"));
 	HookLine->SetupAttachment(RootComponent);
@@ -97,18 +98,6 @@ void AMyCharacter::BeginPlay()
     // 附加拖尾到手上
 	HandTrail->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, FName("HandTrailSocket"));
 	HookLine->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, FName("HandTrailSocket"));
-	// AtkNiagara->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, FName("HandTrailSocket"));
-	// UNiagaraFunctionLibrary::SpawnSystemAttached(
-	// HandTrail,
-	// GetMesh(),
-	// FName("HandTrailSocket"),
-	// FVector(0.f, 0.f, 0.f),
-	// FRotator(0.f, 0.f, 0.f),
-	// EAttachLocation::KeepRelativeOffset,
-	// true,
-	// true
-	// );
-
 	
 }
 
@@ -140,7 +129,7 @@ void AMyCharacter::Move(const FInputActionValue& Value)
 void AMyCharacter::Look(const FInputActionValue& Value)
 {
 	// input is a Vector2D
-	FVector2D LookAxisVector = Value.Get<FVector2D>();
+	const FVector2D LookAxisVector = Value.Get<FVector2D>();
 
 	if (Controller != nullptr)
 	{
@@ -162,7 +151,7 @@ void AMyCharacter::SpeedDown()
 	CharacterMovementComponent->MaxWalkSpeed = Min_Walk_Speed;
 }
 
-void AMyCharacter::MyJump(const FInputActionValue& Value)
+void AMyCharacter::PressJump()
 {
 	if(!bJumpStatus && ( JpCount == 0 || JpCount == 1 ) )
 	{
@@ -170,47 +159,38 @@ void AMyCharacter::MyJump(const FInputActionValue& Value)
 		JpCount++;
 	}
 }
-// 可进行下次跳跃的最短时间
-void AMyCharacter::MyStopJumping()
-{
-	bJumpStatus = false;
-}
 
-void AMyCharacter::FallingDown()
-{
-	bJumpStatus = false;
-	JpCount = 0;
-}
 
 void AMyCharacter::EnableShootMode()
 {
 	bShootMode = true;
+	CameraSmoothToggle(true);
 }
 
 void AMyCharacter::DisableShootMode()
 {
 	bShootMode = false;
+	DisableTimeSlow(ETimeSlowType::Custom);
+	CameraSmoothToggle(false);
 }
 
 
 
-void AMyCharacter::LeftClick()
+void AMyCharacter::PressLeftClick()
 {
 	if(bShootMode && RightWeaponType == ERightWeaponType::Hook)
 	{
 		DisableShootMode();
 		FHitResult HitResult;
-		bool bHit = HookLineTrace(HitResult);
-		if(bHit)
+		if(bool bHit = HookLineTrace(HitResult))
 		{
 			AActor* Actor = HitResult.GetActor();
-			AHookable* Hookable = Cast<AHookable>(Actor);
-			if(Hookable)
+			if(Cast<AHookable>(Actor))
 			{
 				UMyUtils::Debug(Actor->GetName());
 				HookLine->SetActive(true,true);
 				HookLine->SetVariableVec3(FName("EndPosition"), HitResult.Location);
-				FRotator Rotation = ( HitResult.Location - GetActorLocation() ).Rotation();
+				const FRotator Rotation = ( HitResult.Location - GetActorLocation() ).Rotation();
 				FVector ForwardVector = UMyUtils::GetForwardVector(Rotation);
 				SetActorRotation(Rotation);
 				ForwardVector *= HookForceXY;
@@ -230,32 +210,28 @@ void AMyCharacter::LeftClick()
 
 
 
-void AMyCharacter::Skill_A()
+void AMyCharacter::PressSkillA()
 {
 	if(GetCharacterMovement()->IsFalling() && !bSkillA_Active )
 	{
-		Break_Atk_01();
 		bSkillA_Active = true;
 		bJumpStatus = false;
 		CameraBoom->TargetArmLength = 500.f;
 		JpCount = JpCount == 0 ? 1 : JpCount;
-		// GetCharacterMovement()->GravityScale = 0.f;
-		// GetCharacterMovement()->Velocity = FVector(0,0,0);
 		KeepAir(true);
 		TArray<AActor*> Array;
-		UGameplayStatics::GetAllActorsOfClass(GetWorld(), AHookable::StaticClass(), Array);
-		FVector CurrentLocation = GetActorLocation();
+		UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), Array);
+		const FVector CurrentLocation = GetActorLocation();
 		for (const AActor* Actor : Array)
 		{
-			FVector ActorLocation = Actor->GetActorLocation();
+			const FVector ActorLocation = Actor->GetActorLocation();
 			UNiagaraComponent* SpawnSystemAtLocation = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SkillANiagara->GetAsset(), CurrentLocation);
 			SpawnSystemAtLocation->SetVariableVec3(FName("TargetPosition"), ActorLocation);
 		}
-		OnSkillBack.Broadcast(0);
 	}
 }
 
-void AMyCharacter::ATK_01()
+void AMyCharacter::PressAtk1()
 {
 	if(bShootMode && !bAtk_01_Active && !bSkillA_Active) // 代表使用远程
 	{
@@ -286,26 +262,16 @@ void AMyCharacter::ATK_01()
 	}
 }
 
-void AMyCharacter::ATK_02()
+void AMyCharacter::PressAtk2()
 {
 }
 
-void AMyCharacter::Break_Atk_01()
-{
-	if(bAtk_01_Active)
-	{
-		bAtk_01_Active = false;
-		AtkNiagara->SetVisibility(false);
-		AtkNiagara->Deactivate();
-	}
-}
 
 void AMyCharacter::EnterShootModeCallBack()
 {
 	bUseControllerRotationYaw = true;
 	EnableTimeSlow(ETimeSlowType::Custom);
-	AActor* Actor = UGameplayStatics::GetActorOfClass(GetWorld(), APostProcessVolume::StaticClass());
-	if(Actor)
+	if(AActor* Actor = UGameplayStatics::GetActorOfClass(GetWorld(), APostProcessVolume::StaticClass()))
 	{
 		PostProcess = Cast<APostProcessVolume>(Actor);
 		if(PostProcess)
@@ -341,7 +307,7 @@ void AMyCharacter::EnableTimeSlow(const ETimeSlowType Type)
 			}
 		case ETimeSlowType::Custom:
 			{
-				CustomTimeDilation = 1.f;
+				// TODO
 				UGameplayStatics::SetGlobalTimeDilation(GetWorld(), 0.1);
 			}
 		default: return;
@@ -361,12 +327,57 @@ void AMyCharacter::DisableTimeSlow(const ETimeSlowType Type)
 		}
 	case ETimeSlowType::Custom:
 		{
+			// TODO
 			UGameplayStatics::SetGlobalTimeDilation(GetWorld(), 1);
 			break;
 		}
 	default: return;
 	}
 }
+
+void AMyCharacter::CameraSmoothToggle(bool bZoomUp)
+{
+	if (!GetWorldTimerManager().IsTimerActive(ShootTimerHandle))
+	{
+		ShootTimerDelegate.BindLambda([this, bZoomUp]()
+		{
+			SetCameraTransition(bZoomUp);
+		});
+		GetWorldTimerManager().SetTimer(ShootTimerHandle, ShootTimerDelegate, DT, true);
+	}else
+	{
+		GetWorldTimerManager().ClearTimer(ShootTimerHandle);
+		AddTime = ToggleDuration - AddTime;
+		ShootTimerDelegate.BindLambda([this, bZoomUp]()
+		{
+			SetCameraTransition(bZoomUp);
+		});
+		GetWorldTimerManager().SetTimer(ShootTimerHandle, ShootTimerDelegate, DT, true);
+	}
+	
+}
+
+void AMyCharacter::SetCameraTransition(const bool bZoomUp)
+{
+	const float DeltaTargetLength = FMath::Lerp(bZoomUp ? Max_Target_Length : Min_Target_Length, bZoomUp ? Min_Target_Length : Max_Target_Length, AddTime / ToggleDuration);
+	const FVector DeltaCameraVector = FMath::Lerp(bZoomUp ? CameraBoomStartVector : CameraBoomEndVector, bZoomUp ? CameraBoomEndVector : CameraBoomStartVector, AddTime / ToggleDuration);
+	CameraBoom->TargetArmLength = DeltaTargetLength;
+	CameraBoom->SetRelativeLocation(DeltaCameraVector);
+	AddTime += DT;
+	if(AddTime >= ToggleDuration)
+	{
+		AddTime = 0.f;
+		GetWorldTimerManager().ClearTimer(ShootTimerHandle);
+		if(bZoomUp)
+		{
+			EnterShootModeCallBack();
+		}else
+		{
+			LeaveShootModeCallBack();
+		}
+	}
+}
+
 
 void AMyCharacter::KeepAir(const bool bKeep) 
 {
@@ -379,102 +390,34 @@ void AMyCharacter::KeepAir(const bool bKeep)
 	}else
 	{
 		bCanMove = true;
-		CharacterMovementComponent->GravityScale = 2.f;
+		CharacterMovementComponent->GravityScale = Default_Gravity;
 	}
 }
 
-void AMyCharacter::ApplyATK()
-{
-	AtkNiagara->SetVisibility(true);
-	AtkNiagara->Activate();
-	FVector SocketLocation = GetMesh()->GetSocketLocation(FName("HandTrailSocket"));
-	AtkNiagara->SetWorldLocation(FVector(SocketLocation.X, SocketLocation.Y, SocketLocation.Z + 5.f));
-	FVector SourceLocation = AtkNiagara->GetComponentLocation();
-		// const FVector SourceLocation = GetActorLocation();
-	const FRotator Rotation = (FinalHitLocation - SourceLocation).Rotation();
-	AtkNiagara->SetWorldRotation(Rotation);
-	const double Distance = FVector::Distance(SourceLocation, FinalHitLocation);
-	AtkNiagara->SetVariableVec3(FName("Length"), FVector(Distance - 10, 0, 0));
-	AtkNiagara->SetVariableVec2(FName("LengthWidth"), FVector2D(Distance - 10, 10));
-}
 
-
-void AMyCharacter::ApplyJumpforce()
-{
-	if(JpCount <= 2)
-	{
-		if(JpCount == 2)
-		{
-			Jump2Niagara->SetActive(true, true);
-		}
-		float ForceX, ForceY;
-		UCharacterMovementComponent* CharacterMovementComponent = GetCharacterMovement();
-		CharacterMovementComponent->Velocity = FVector(0,0,0);
-		{
-			FVector ForwardVector, RightVector;
-			GetForwardAndRightVectors(ForwardVector, RightVector);
-			FVector CalcVector;
-			APlayerController* FirstPlayerController = GetWorld()->GetFirstPlayerController();
-			
-			if(FirstPlayerController->IsInputKeyDown(EKeys::W))
-			{
-				CalcVector += ForwardVector;
-			}
-			if(FirstPlayerController->IsInputKeyDown(EKeys::S))
-			{
-				CalcVector += ForwardVector * -1;
-			}
-			if(FirstPlayerController->IsInputKeyDown(EKeys::D))
-			{
-				CalcVector += RightVector;
-			}
-			if(FirstPlayerController->IsInputKeyDown(EKeys::A))
-			{
-				CalcVector += RightVector * -1;
-			}
-			UMyUtils::Debug(CalcVector.ToString());
-			ForceX = CalcVector.X * JumpForceXYThreshold * NormalJumpForce;
-			ForceY = CalcVector.Y * JumpForceXYThreshold * NormalJumpForce;
-			// SetActorRotation(FVector(CalcVector.X, CalcVector.Y, 1).Rotation());
-		}
-		CharacterMovementComponent->AddImpulse(FVector(ForceX,ForceY,NormalJumpForce), false);
-	}
-}
-
-// void AMyCharacter::CanJumpAgainCallback()
-// {
-// 	bCanJump = true;
-// }
 
 FVector AMyCharacter::GetControlForwardVector(const int Distance) const
 {
-	FRotator ControlRotation = GetControlRotation();
-	FVector ActorLocation = GetActorLocation();
-	FRotationMatrix RotationMatrix(ControlRotation);
-	FVector ForwardVector = RotationMatrix.GetScaledAxis(EAxis::X);
+	const FRotator ControlRotation = GetControlRotation();
+	const FVector ActorLocation = GetActorLocation();
+	const FRotationMatrix RotationMatrix(ControlRotation);
+	const FVector ForwardVector = RotationMatrix.GetScaledAxis(EAxis::X);
 	return ActorLocation + ForwardVector * Distance;
 }
 
 
 
-bool AMyCharacter::HookLineTrace(FHitResult& HitResult)
+bool AMyCharacter::HookLineTrace(FHitResult& HitResult) const
 {
-	UWorld* World = GetWorld();
-	APlayerController* FirstPlayerController = World->GetFirstPlayerController();
-
-	FVector Pos, Dir, End;
-	FVector2D ScreenSize = UMyUtils::GetScreenSize();
-	
+	const UWorld* World = GetWorld();
+	const APlayerController* FirstPlayerController = World->GetFirstPlayerController();
+	FVector Pos, Dir;
+	const FVector2D ScreenSize = UMyUtils::GetScreenSize();
 	FirstPlayerController->DeprojectScreenPositionToWorld(ScreenSize.X / 2, ScreenSize.Y / 2, Pos, Dir);
-
-	End = Pos + Dir * HookDistance;
-	
+	const FVector End = Pos + Dir * TraceDistance;
 	FCollisionQueryParams CollisionQueryParams;
-
 	CollisionQueryParams.AddIgnoredActor(this);
-
-	bool bHit = World->LineTraceSingleByChannel(HitResult, Pos, End, ECC_Pawn, CollisionQueryParams);
-	
+	const bool bHit = World->LineTraceSingleByChannel(HitResult, Pos, End, ECC_Pawn, CollisionQueryParams);
 	return bHit;
 }
 
@@ -482,73 +425,24 @@ bool AMyCharacter::HookLineTrace(FHitResult& HitResult)
 void AMyCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	if(bShootMode)
-	{
-		if(CameraBoom->TargetArmLength > Min_Target_Length)
-		{
-			AddTime += DeltaTime;
-			const float DeltaLength = FMath::Lerp(Max_Target_Length, Min_Target_Length, AddTime/ToggleDuration);
-			const FVector DeltaVector = FMath::Lerp(CameraBoomStartVector, CameraBoomEndVector, AddTime/ToggleDuration);
-			CameraBoom->TargetArmLength = DeltaLength;
-			CameraBoom->SetRelativeLocation(DeltaVector);
-			if(AddTime > ToggleDuration)
-			{
-				AddTime = 0.f;
-				EnterShootModeCallBack();
-			}
-		}
-	}else
-	{
-		if(CameraBoom->TargetArmLength < Max_Target_Length)
-		{
-			DisableTimeSlow(ETimeSlowType::Custom);
-			AddTime += DeltaTime;
-			const float DeltaLength = FMath::Lerp(Min_Target_Length, Max_Target_Length, AddTime/ToggleDuration);
-			const FVector DeltaVector = FMath::Lerp(CameraBoomEndVector, CameraBoomStartVector, AddTime/ToggleDuration);
-			CameraBoom->TargetArmLength = DeltaLength;
-			CameraBoom->SetRelativeLocation(DeltaVector);
-			if(AddTime > ToggleDuration)
-			{
-				AddTime = 0.f;
-				LeaveShootModeCallBack();
-				
-			}
-		}
-	}
 }
 
 // Called to bind functionality to input
 void AMyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
 		
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AMyCharacter::MyJump);
-
-		// Moving
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AMyCharacter::PressJump);
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMyCharacter::Move);
-
-		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AMyCharacter::Look);
-		
 		EnhancedInputComponent->BindAction(SpeedUpAction, ETriggerEvent::Started, this, &AMyCharacter::SpeedUp);
 		EnhancedInputComponent->BindAction(SpeedUpAction, ETriggerEvent::Completed, this, &AMyCharacter::SpeedDown);
-
-		
 		EnhancedInputComponent->BindAction(ShootModeAction, ETriggerEvent::Started, this, &AMyCharacter::EnableShootMode);
 		EnhancedInputComponent->BindAction(ShootModeAction, ETriggerEvent::Completed, this, &AMyCharacter::DisableShootMode);
-
-		
-		EnhancedInputComponent->BindAction(LeftClickAction, ETriggerEvent::Started, this, &AMyCharacter::LeftClick);
-
-		EnhancedInputComponent->BindAction(Skill_A_Action, ETriggerEvent::Started, this, &AMyCharacter::Skill_A);
-		
-		EnhancedInputComponent->BindAction(Atk_01_Action, ETriggerEvent::Started, this, &AMyCharacter::ATK_01);
-		
-		EnhancedInputComponent->BindAction(Atk_02_Action, ETriggerEvent::Started, this, &AMyCharacter::ATK_02);
-
-		
+		EnhancedInputComponent->BindAction(LeftClickAction, ETriggerEvent::Started, this, &AMyCharacter::PressLeftClick);
+		EnhancedInputComponent->BindAction(Skill_A_Action, ETriggerEvent::Started, this, &AMyCharacter::PressSkillA);
+		EnhancedInputComponent->BindAction(Atk_01_Action, ETriggerEvent::Started, this, &AMyCharacter::PressAtk1);
+		EnhancedInputComponent->BindAction(Atk_02_Action, ETriggerEvent::Started, this, &AMyCharacter::PressAtk2);
 	}
 	else
 	{
@@ -558,19 +452,18 @@ void AMyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 void AMyCharacter::GetForwardAndRightVectors(FVector& ForwardVector, FVector& RightVector) const
 {
-	FRotator ControlRotation = GetControlRotation();
-	FRotator ControlRotationYaw(0.f, ControlRotation.Yaw, 0.f);
-	// 计算前进向量和向右向量
+	const FRotator ControlRotation = GetControlRotation();
+	const FRotator ControlRotationYaw(0.f, ControlRotation.Yaw, 0.f);
 	ForwardVector = ControlRotationYaw.Vector();
 	RightVector = ForwardVector.RotateAngleAxis(90.f, FVector(0.f, 0.f, 1.f));
 }
 
 FVector AMyCharacter::GetActorForwardVector(const int Distance) const
 {
-	FRotator ControlRotation = GetActorRotation();
-	FVector ActorLocation = GetActorLocation();
-	FRotationMatrix RotationMatrix(ControlRotation);
-	FVector ForwardVector = RotationMatrix.GetScaledAxis(EAxis::X);
+	const FRotator ControlRotation = GetActorRotation();
+	const FVector ActorLocation = GetActorLocation();
+	const FRotationMatrix RotationMatrix(ControlRotation);
+	const FVector ForwardVector = RotationMatrix.GetScaledAxis(EAxis::X);
 	return ActorLocation + ForwardVector * Distance;
 }
 
