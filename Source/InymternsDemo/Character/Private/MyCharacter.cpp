@@ -98,30 +98,33 @@ void AMyCharacter::BeginPlay()
     // 附加拖尾到手上
 	HandTrail->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, FName("HandTrailSocket"));
 	HookLine->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, FName("HandTrailSocket"));
+	AtkNiagara->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, FName("HandTrailSocket"));
 	
 }
 
 void AMyCharacter::Move(const FInputActionValue& Value)
 {
-	if(bCanMove)
+	if(!bCanMove) return;
+	if(bAtk_01_Active && !bCanBreakAtk01) return;
+	if(bAtk_02_Active && !bCanBreakAtk02) return;
+	Break_Atk1();
+	Break_Atk2();
+	FVector2D MovementVector = Value.Get<FVector2D>();
+	if (Controller != nullptr)
 	{
-		FVector2D MovementVector = Value.Get<FVector2D>();
-		if (Controller != nullptr)
-		{
-			// find out which way is forward
-			const FRotator Rotation = Controller->GetControlRotation();
-			const FRotator YawRotation(0, Rotation.Yaw, 0);
+		// find out which way is forward
+		const FRotator Rotation = Controller->GetControlRotation();
+		const FRotator YawRotation(0, Rotation.Yaw, 0);
 
-			// get forward vector
-			const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+		// get forward vector
+		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
 	
-			// get right vector 
-			const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+		// get right vector 
+		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-			// add movement 
-			AddMovementInput(ForwardDirection, MovementVector.Y);
-			AddMovementInput(RightDirection, MovementVector.X);
-		}
+		// add movement 
+		AddMovementInput(ForwardDirection, MovementVector.Y);
+		AddMovementInput(RightDirection, MovementVector.X);
 	}
 	
 }
@@ -153,11 +156,119 @@ void AMyCharacter::SpeedDown()
 
 void AMyCharacter::PressJump()
 {
-	if(!bJumpStatus && ( JpCount == 0 || JpCount == 1 ) )
+
+	// Logic
+	if(bAtk_01_Active && !bCanBreakAtk01)
+	{
+		return;
+	};
+	if(bAtk_02_Active && !bCanBreakAtk02)
+	{
+		return;
+	};
+	
+	
+	if(JpCount == 0 && !bJumpStatus) // 首次跳跃
 	{
 		bJumpStatus = true;
 		JpCount++;
+		return;
 	}
+	if(JpCount == 1 && bJumpStatus && bCanJumpBreak)
+	{
+		Jump2Niagara->SetActive(true, true);
+		Break_JumpStart();
+		bJumpStatus = true;
+		JpCount++;
+		return;
+	}
+	if(JpCount == 1 && !bJumpStatus)
+	{
+		if(!GetCharacterMovement()->IsFalling()) // 落地时可打断时才能跳跃
+		{
+			Break_Land();
+			if(bCanLandBreak)
+			{
+				bJumpStatus = true;
+				JpCount++;
+			}
+		}else
+		{
+			bJumpStatus = true;
+			JpCount++;
+			Jump2Niagara->SetActive(true, true);
+		}	
+	}
+}
+
+void AMyCharacter::CanBreak_JumpStart()
+{
+	bCanJumpBreak = true;
+	ApplyJumpForce();
+}
+
+void AMyCharacter::End_JumpStart()
+{
+	bJumpStatus = false;
+	bCanJumpBreak = false;
+}
+
+void AMyCharacter::Break_JumpStart()
+{
+	if(bCanJumpBreak)
+	{
+		bJumpStatus = false;
+		bCanJumpBreak = false;
+	}
+}
+
+void AMyCharacter::ApplyJumpForce()
+{
+	UCharacterMovementComponent* CharacterMovementComponent = GetCharacterMovement();
+	CharacterMovementComponent->Velocity = FVector(0,0,0);
+	const APlayerController* FirstPlayerController = GetWorld()->GetFirstPlayerController();
+	const FVector ForwardVector = UMyUtils::GetForwardVector(FirstPlayerController->GetControlRotation());
+	const FVector RightVector = ForwardVector.RotateAngleAxis(90.f, FVector(0.f, 0.f, 1.f));
+	FVector Force;
+	if (FirstPlayerController->IsInputKeyDown(EKeys::W))
+	{
+		Force += ForwardVector;
+	}
+	if(FirstPlayerController->IsInputKeyDown(EKeys::S))
+	{
+		Force -= ForwardVector;
+	}
+	if(FirstPlayerController->IsInputKeyDown(EKeys::D))
+	{
+		Force += RightVector;
+	}
+	if(FirstPlayerController->IsInputKeyDown(EKeys::A))
+	{
+		Force -= RightVector;
+	}
+	UMyUtils::Debug(Force.ToString());
+	Force = FVector(Force.X * NormalJumpForce * JumpForceXYThreshold, Force.Y * NormalJumpForce * JumpForceXYThreshold, NormalJumpForce );
+	CharacterMovementComponent->AddImpulse(Force, false);
+}
+
+void AMyCharacter::CanBreak_Land()
+{
+	if(!GetCharacterMovement()->IsFalling())
+	{
+		bCanLandBreak = true;
+	}
+}
+
+void AMyCharacter::Break_Land()
+{
+	JpCount = 0;
+	bCanLandBreak = false;
+}
+
+void AMyCharacter::End_Land()
+{
+	bCanLandBreak = false;
+	JpCount = 0;
 }
 
 
@@ -182,29 +293,29 @@ void AMyCharacter::PressLeftClick()
 	{
 		DisableShootMode();
 		FHitResult HitResult;
-		if(bool bHit = HookLineTrace(HitResult))
+		if(bool bHit = HookLineTrace(HitResult, HookDistance)) 
 		{
 			AActor* Actor = HitResult.GetActor();
-			if(Cast<AHookable>(Actor))
+			if(AEnemy* Enemy = Cast<AEnemy>(Actor)) // 
 			{
-				UMyUtils::Debug(Actor->GetName());
-				HookLine->SetActive(true,true);
-				HookLine->SetVariableVec3(FName("EndPosition"), HitResult.Location);
-				const FRotator Rotation = ( HitResult.Location - GetActorLocation() ).Rotation();
-				FVector ForwardVector = UMyUtils::GetForwardVector(Rotation);
-				SetActorRotation(Rotation);
-				ForwardVector *= HookForceXY;
-				if(JpCount == 0)
+				if(const int Mass = Enemy->Mass; Mass > MaxHookMass)
 				{
-					JpCount = 1;
+					ApplyHook(HitResult.Location, HookForceZ, true, false);
+				}else
+				{
+					ApplyHook(HitResult.Location, HookForceZ, false, false);
 				}
-				GetCharacterMovement()->Velocity = FVector(0,0,0);
-				GetCharacterMovement()->AddImpulse(FVector(ForwardVector.X, ForwardVector.Y, HookForceZ), false);
+			}else if(Cast<AHookable>(Actor)) // 可勾的物体
+			{
+				ApplyHook(HitResult.Location, HookForceZ, true, true);
 			}
+		}else
+		{
+			
 		}
-	}else if(bShootMode && RightWeaponType == ERightWeaponType::Hook)
+	}else if(bShootMode && RightWeaponType == ERightWeaponType::Throw)
 	{
-		
+		UMyUtils::Debug("Throw ...", FColor::Green);
 	}
 }
 
@@ -233,20 +344,20 @@ void AMyCharacter::PressSkillA()
 
 void AMyCharacter::PressAtk1()
 {
+	if(bAtk_02_Active && !bCanBreakAtk02) return;
+	
 	if(bShootMode && !bAtk_01_Active && !bSkillA_Active) // 代表使用远程
 	{
-		
-		FHitResult HitResult;
-		bool bHit = HookLineTrace(HitResult);
-		if(!bHit) return;
-		FinalHitLocation = HitResult.Location;
+		if(GetCharacterMovement()->IsFalling())
+		{
+			KeepAir(true);
+			UMyUtils::Debug("PressAtk1 ... ");
+		}
 		switch (RightWeaponType)
 		{
 		case ERightWeaponType::Hook: // 钩子
 			{
-				DisableShootMode();
 				bAtk_01_Active = true;
-				KeepAir(true);
 				break;
 			}
 		case ERightWeaponType::Throw: // 投掷物
@@ -262,7 +373,100 @@ void AMyCharacter::PressAtk1()
 	}
 }
 
+void AMyCharacter::CanBreak_Atk1()
+{
+	bCanBreakAtk01 = true;
+}
+
+void AMyCharacter::Break_Atk1()
+{
+	if(bAtk_01_Active)
+	{
+		KeepAir(false);
+		GetWorldTimerManager().ClearTimer(AtkTimerHandle);
+		bCanBreakAtk01 = false;
+		bAtk_01_Active = false;
+		
+	}
+	// AtkNiagara->Deactivate();
+}
+
+void AMyCharacter::End_Atk1()
+{
+	bCanBreakAtk01 = false;
+	bAtk_01_Active = false;
+	KeepAir(false);
+	// AtkNiagara->Deactivate();
+}
+
+void AMyCharacter::Apply_Atk1()
+{
+	// 出特效
+	// FHitResult HitResult;
+	// HookLineTrace(HitResult, Atk_01_Distance);
+	// const FVector AtkEnd = HitResult.GetActor()->GetActorLocation();
+	// AtkNiagara->SetVariableVec3(FName("Location"), AtkEnd);
+	// AtkNiagara->Activate(true);
+	AtkTimerDelegate.BindLambda([this]()
+	{
+		this->End_Atk1();
+	});
+	GetWorldTimerManager().SetTimer(AtkTimerHandle,AtkTimerDelegate, Atk_01_Duration, false);
+}
+
 void AMyCharacter::PressAtk2()
+{
+	if(bAtk_01_Active && !bCanBreakAtk01) return;
+	if(bShootMode && !bAtk_02_Active && !bSkillA_Active) // 代表使用远程
+	{
+		if(GetCharacterMovement()->IsFalling())
+		{
+			KeepAir(true);
+		}
+		switch (RightWeaponType)
+		{
+		case ERightWeaponType::Hook: // 钩子
+			{
+				bAtk_02_Active = true;
+				break;
+			}
+		case ERightWeaponType::Throw: // 投掷物
+			{
+				break;
+			}
+		case ERightWeaponType::Shoot: // 射击
+			{
+				break;
+			}	
+		default: return;
+		}
+	}
+}
+
+void AMyCharacter::CanBreak_Atk2()
+{
+	bCanBreakAtk02 = true;
+}
+
+void AMyCharacter::Break_Atk2()
+{
+	if(bAtk_02_Active)
+	{
+		KeepAir(false);
+		UMyUtils::Debug("Break_Atk2 ... ");
+		bCanBreakAtk02 = false;
+		bAtk_02_Active = false;
+	}
+}
+
+void AMyCharacter::End_Atk2()
+{
+	KeepAir(false);
+	bCanBreakAtk02 = false;
+	bAtk_02_Active = false;
+}
+
+void AMyCharacter::Apply_Atk2()
 {
 }
 
@@ -343,7 +547,7 @@ void AMyCharacter::CameraSmoothToggle(bool bZoomUp)
 		{
 			SetCameraTransition(bZoomUp);
 		});
-		GetWorldTimerManager().SetTimer(ShootTimerHandle, ShootTimerDelegate, DT, true);
+		GetWorldTimerManager().SetTimer(ShootTimerHandle, ShootTimerDelegate, DT, true, 0);
 	}else
 	{
 		GetWorldTimerManager().ClearTimer(ShootTimerHandle);
@@ -352,7 +556,7 @@ void AMyCharacter::CameraSmoothToggle(bool bZoomUp)
 		{
 			SetCameraTransition(bZoomUp);
 		});
-		GetWorldTimerManager().SetTimer(ShootTimerHandle, ShootTimerDelegate, DT, true);
+		GetWorldTimerManager().SetTimer(ShootTimerHandle, ShootTimerDelegate, DT, true, 0);
 	}
 	
 }
@@ -368,12 +572,48 @@ void AMyCharacter::SetCameraTransition(const bool bZoomUp)
 	{
 		AddTime = 0.f;
 		GetWorldTimerManager().ClearTimer(ShootTimerHandle);
+		CameraBoom->SetRelativeLocation(bZoomUp ? CameraBoomEndVector : CameraBoomStartVector);
+		CameraBoom->TargetArmLength = bZoomUp ? Min_Target_Length : Max_Target_Length;
 		if(bZoomUp)
 		{
 			EnterShootModeCallBack();
 		}else
 		{
 			LeaveShootModeCallBack();
+		}
+	}
+}
+
+void AMyCharacter::ApplyHook(FVector Location, float Force, bool bPullSelf, bool bStatic)
+{
+	HookLine->SetActive(true,true);
+	HookLine->SetVariableVec3(FName("EndPosition"), Location);
+	const FRotator Rotation = ( Location - GetActorLocation() ).Rotation();
+	const FVector ForwardVector = UMyUtils::GetForwardVector(Rotation);
+	SetActorRotation(Rotation);
+	UCharacterMovementComponent* CharacterMovementComponent = GetCharacterMovement();
+	CharacterMovementComponent->Velocity = FVector(0.f, 0.f, 0.f);
+	if(JpCount == 0)
+	{
+		JpCount = 1;
+	}
+	if(bStatic)
+	{
+		if(CharacterMovementComponent->IsFalling())
+		{
+			CharacterMovementComponent->AddImpulse(FVector(ForwardVector.X * Force, ForwardVector.Y * Force, HookSelfToStaticZThreshold * 0.8f * Force), false);
+		}else
+		{
+			CharacterMovementComponent->AddImpulse(FVector(ForwardVector.X * Force, ForwardVector.Y * Force, HookSelfToStaticZThreshold * Force), false);
+		}
+	}else
+	{
+		if(bPullSelf) // 拉自己过去
+		{
+			CharacterMovementComponent->AddImpulse(FVector(ForwardVector.X * Force, ForwardVector.Y * Force, HookSelfToEnemyZThreshold * Force), false);
+		}else // 将敌人拉过来
+		{
+			UMyUtils::Debug("pull enemy");
 		}
 	}
 }
@@ -407,18 +647,28 @@ FVector AMyCharacter::GetControlForwardVector(const int Distance) const
 
 
 
-bool AMyCharacter::HookLineTrace(FHitResult& HitResult) const
+bool AMyCharacter::HookLineTrace(FHitResult& HitResult, float Distance) const
 {
 	const UWorld* World = GetWorld();
 	const APlayerController* FirstPlayerController = World->GetFirstPlayerController();
 	FVector Pos, Dir;
 	const FVector2D ScreenSize = UMyUtils::GetScreenSize();
 	FirstPlayerController->DeprojectScreenPositionToWorld(ScreenSize.X / 2, ScreenSize.Y / 2, Pos, Dir);
-	const FVector End = Pos + Dir * TraceDistance;
+	const FVector End = Pos + Dir * Distance;
 	FCollisionQueryParams CollisionQueryParams;
 	CollisionQueryParams.AddIgnoredActor(this);
 	const bool bHit = World->LineTraceSingleByChannel(HitResult, Pos, End, ECC_Pawn, CollisionQueryParams);
 	return bHit;
+}
+
+FVector AMyCharacter::CalcAtkEnd(const float Distance) const
+{
+	const UWorld* World = GetWorld();
+	const APlayerController* FirstPlayerController = World->GetFirstPlayerController();
+	FVector Pos, Dir;
+	const FVector2D ScreenSize = UMyUtils::GetScreenSize();
+	FirstPlayerController->DeprojectScreenPositionToWorld(ScreenSize.X / 2, ScreenSize.Y / 2, Pos, Dir);
+	return Pos + Dir * Distance;
 }
 
 // Called every frame

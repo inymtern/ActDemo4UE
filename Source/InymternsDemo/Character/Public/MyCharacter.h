@@ -118,16 +118,24 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	
 
 	// jump
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Jump, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Jump, meta = (AllowPrivateAccess = "true"))
 	int JpCount = 0;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Jump, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Jump, meta = (AllowPrivateAccess = "true"))
 	int MaxJpCount = 2;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Jump, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Jump, meta = (AllowPrivateAccess = "true"))
 	float NormalJumpForce = 120000.f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Jump, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Jump, meta = (AllowPrivateAccess = "true"))
 	float JumpForceXYThreshold = .5f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Jump, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Jump, meta = (AllowPrivateAccess = "true"))
 	bool bJumpStatus = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Jump, meta = (AllowPrivateAccess = "true"))
+	bool bCanJumpBreak = false;
+
+	// Land 落地
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Land, meta = (AllowPrivateAccess = "true"))
+	bool bCanLandBreak = false;
+	
+	
 
 	// shoot sett
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ShootMode, meta = (AllowPrivateAccess = "true"))
@@ -155,11 +163,17 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Skill_Hook, meta = (AllowPrivateAccess = "true"))
 	float HookForceZ = 100000.f; 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Skill_Hook, meta = (AllowPrivateAccess = "true"))
-	float HookForceXY = 120000.f;
+	float HookDistance = 3000.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Skill_Hook, meta = (AllowPrivateAccess = "true"))
+	int MaxHookMass = 70;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Skill_Hook, meta = (AllowPrivateAccess = "true"))
+	float HookSelfToEnemyZThreshold = 0.3f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Skill_Hook, meta = (AllowPrivateAccess = "true"))
+	float HookSelfToStaticZThreshold = 1.1f;
 
 	// 右手 weapon
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Weapon, meta = (AllowPrivateAccess = "true"))
-	ERightWeaponType RightWeaponType;
+	ERightWeaponType RightWeaponType = ERightWeaponType::Hook;
 
 	// Skill_A
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
@@ -173,9 +187,23 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	// ATK_01
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	bool bAtk_01_Active = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	bool bCanBreakAtk01 = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	float Atk_01_Duration = 2.f; // 持续时间
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	float Atk_01_Distance = 500.f; // 距离
+	FTimerHandle AtkTimerHandle;
+	FTimerDelegate AtkTimerDelegate;
+	
+	
+	
 	// ATK_02
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	bool bAtk_02_Active = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	bool bCanBreakAtk02 = false;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	FVector FinalHitLocation;
 
@@ -196,10 +224,48 @@ protected:
 	virtual void SpeedDown(); // 减速
 	
 	virtual void PressJump(); // 按下跳跃
+	UFUNCTION(BlueprintCallable)
+	void CanBreak_JumpStart(); // 起跳可以打断时
+	UFUNCTION(BlueprintCallable)
+	void End_JumpStart(); // 起跳结束
+	void Break_JumpStart(); // 起跳打断
+	void ApplyJumpForce();
+	UFUNCTION(BlueprintCallable)
+	void CanBreak_Land();
+	void Break_Land();
+	UFUNCTION(BlueprintCallable)
+	void End_Land();
+	
+	
+	
 	virtual void PressLeftClick(); // 按下左键
 	virtual void PressSkillA();  // 按下技能A
+
+	/**
+	 * 技能一
+	 */
 	void PressAtk1(); // 按下 F 技能
+	UFUNCTION(BlueprintCallable)
+	void CanBreak_Atk1(); // 可以打断 F 技能时
+	UFUNCTION(BlueprintCallable)
+	void Break_Atk1(); // 打断 F 技能
+	UFUNCTION(BlueprintCallable)
+	void End_Atk1();  // F 技能正常结束
+	UFUNCTION(BlueprintCallable)
+	void Apply_Atk1();
+
+	/**
+	 * 技能二
+	 */
 	void PressAtk2(); // 按下 E 技能
+	UFUNCTION(BlueprintCallable)
+	void CanBreak_Atk2();
+	UFUNCTION(BlueprintCallable)
+	void Break_Atk2();
+	UFUNCTION(BlueprintCallable)
+	void End_Atk2();
+	UFUNCTION(BlueprintCallable)
+	void Apply_Atk2();
 	
 	virtual void EnableShootMode(); // 开启瞄准
 	virtual void DisableShootMode(); // 关闭瞄准
@@ -212,13 +278,14 @@ protected:
 	void CameraSmoothToggle(bool bZoomUp); // 设置摄像机位置
 	void SetCameraTransition(bool bZoomUp); // 设置摄像机位置
 	
-
+	void ApplyHook(FVector Location, float Force, bool bPullSelf = true, bool bStatic = true); // 钩子执行
 
 	
 	void GetForwardAndRightVectors(FVector& ForwardVector, FVector& RightVector) const;
 	FVector GetActorForwardVector(const int Distance) const;
 	FVector GetControlForwardVector(const int Distance) const; 
-	bool HookLineTrace(FHitResult& HitResult) const; // 射线检测
+	bool HookLineTrace(FHitResult& HitResult, float Distance) const; // 射线检测
+	FVector CalcAtkEnd(float Distance) const;
 public:
 
 
@@ -226,7 +293,6 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void KeepAir(bool bKeep);
 
-	
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }

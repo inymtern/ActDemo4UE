@@ -16,7 +16,7 @@ class INYMTERNSDEMO_API UMyUtils : public UObject
 
 public:
 	static FVector2D GetScreenSize();
-	static void Debug(const FString& Str);
+	static void Debug(const FString& Str, FColor Color = FColor::Black);
 	static void DrawLine(UWorld* World, FVector Start, FVector End);
 	static FVector GetForwardVector(FRotator Rotator);
 };

@@ -19,9 +19,9 @@ FVector2D UMyUtils::GetScreenSize()
 	return FVector2D::ZeroVector;
 }
 
-void UMyUtils::Debug(const FString& Str)
+void UMyUtils::Debug(const FString& Str, FColor Color)
 {
-	GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, Str);
+	GEngine->AddOnScreenDebugMessage(-1, 2.f, Color, Str);
 }
 
 void UMyUtils::DrawLine(UWorld* World, FVector Start, FVector End)
