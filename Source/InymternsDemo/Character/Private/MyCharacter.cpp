@@ -57,13 +57,16 @@ AMyCharacter::AMyCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
+	SkillA_NG = CreateDefaultSubobject<UNiagaraComponent>(TEXT("SkillANG"));
+	SkillA_NG->SetupAttachment(RootComponent);
+
+	AtkHook1_NG = CreateDefaultSubobject<UNiagaraComponent>(TEXT("AtkNG"));
+	AtkHook1_NG->SetupAttachment(RootComponent);
 	
 	// 发射线条
 	HookLine = CreateDefaultSubobject<UNiagaraComponent>(TEXT("HookLine"));
 	HookLine->SetupAttachment(RootComponent);
 
-	SkillANiagara = CreateDefaultSubobject<UNiagaraComponent>(TEXT("SkillA"));
-	SkillANiagara->SetupAttachment(GetMesh());
 	
 	// 手部拖尾
 	HandTrail = CreateDefaultSubobject<UNiagaraComponent>(TEXT("HandTrail"));
@@ -72,19 +75,47 @@ AMyCharacter::AMyCharacter()
 	Jump2Niagara = CreateDefaultSubobject<UNiagaraComponent>(TEXT("Jump2"));
 	Jump2Niagara->SetupAttachment(GetMesh());
 
-	AtkNiagara = CreateDefaultSubobject<UNiagaraComponent>(TEXT("ATK"));
-	AtkNiagara->SetupAttachment(GetMesh());
+
+
+
 }
 
 // Called when the game starts or when spawned
 void AMyCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	HookLine->SetAutoActivate(false);
-	HandTrail->SetAutoActivate(false);
-	SkillANiagara->SetAutoActivate(false);
-	Jump2Niagara->SetAutoActivate(false);
-	AtkNiagara->Deactivate();
+	// 附加拖尾到手上
+	const FName SocketName = FName("HandTrailSocket");
+	if(HookLine)
+	{
+		HookLine->bAutoActivate = false;
+		HookLine->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, SocketName);
+	}
+	if(HandTrail)
+	{
+		HandTrail->bAutoActivate = false;
+		HandTrail->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, SocketName);
+	}
+	if(Jump2Niagara)
+	{
+		Jump2Niagara->bAutoActivate = false;
+	}
+	// if(SkillANG)
+	// {
+	// 	SkillANG->bAutoActivate = false;
+	// 	SkillANG->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, SocketName);
+	// }
+	if(AtkHook1_NG)
+	{
+		AtkHook1_NG->bAutoActivate = false;
+		AtkHook1_NG->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, SocketName);
+	}
+
+	
+	
+	
+	
+	
 	
 	//Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
@@ -95,11 +126,7 @@ void AMyCharacter::BeginPlay()
 		}
 	}
 
-    // 附加拖尾到手上
-	HandTrail->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, FName("HandTrailSocket"));
-	HookLine->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, FName("HandTrailSocket"));
-	AtkNiagara->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, FName("HandTrailSocket"));
-	
+    
 }
 
 void AMyCharacter::Move(const FInputActionValue& Value)
@@ -163,6 +190,10 @@ void AMyCharacter::PressJump()
 		return;
 	};
 	if(bAtk_02_Active && !bCanBreakAtk02)
+	{
+		return;
+	};
+	if(bSkillA_Active && !bCanBreakSkillA)
 	{
 		return;
 	};
@@ -323,6 +354,8 @@ void AMyCharacter::PressLeftClick()
 
 void AMyCharacter::PressSkillA()
 {
+	if(bAtk_01_Active && !bCanBreakAtk01) return;
+	if(bAtk_02_Active && !bCanBreakAtk02) return;
 	if(GetCharacterMovement()->IsFalling() && !bSkillA_Active )
 	{
 		bSkillA_Active = true;
@@ -336,28 +369,67 @@ void AMyCharacter::PressSkillA()
 		for (const AActor* Actor : Array)
 		{
 			const FVector ActorLocation = Actor->GetActorLocation();
-			UNiagaraComponent* SpawnSystemAtLocation = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SkillANiagara->GetAsset(), CurrentLocation);
+			UNiagaraComponent* SpawnSystemAtLocation = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SkillA_NG->GetAsset(), CurrentLocation);
 			SpawnSystemAtLocation->SetVariableVec3(FName("TargetPosition"), ActorLocation);
 		}
+		SkillATimerDelegate.BindLambda([this]()
+		{
+			this->End_SkillA();	
+		});
+		GetWorldTimerManager().SetTimer(SkillATimerHandle, SkillATimerDelegate, SkillA_Duration, false);
 	}
+}
+
+void AMyCharacter::CanBreak_SkillA()
+{
+	bCanBreakSkillA = true;
+}
+
+void AMyCharacter::Break_SkillA()
+{
+	if(bCanBreakSkillA)
+	{
+		bCanBreakSkillA = false;
+		bSkillA_Active = false;
+		GetWorldTimerManager().ClearTimer(SkillATimerHandle);
+		if(!bAtk_01_Active && !bAtk_02_Active)
+		{
+			KeepAir(false);
+		}
+	}
+}
+
+void AMyCharacter::End_SkillA()
+{
+	if(!bAtk_01_Active && !bAtk_02_Active)
+	{
+		KeepAir(false);
+	}
+	bCanBreakSkillA = false;
+	bSkillA_Active = false;
+	GetWorldTimerManager().ClearTimer(SkillATimerHandle);
+	
 }
 
 void AMyCharacter::PressAtk1()
 {
 	if(bAtk_02_Active && !bCanBreakAtk02) return;
+	if(bSkillA_Active && !bCanBreakSkillA) return;
 	
-	if(bShootMode && !bAtk_01_Active && !bSkillA_Active) // 代表使用远程
+	if(bShootMode && !bAtk_01_Active ) // 代表使用远程
 	{
 		if(GetCharacterMovement()->IsFalling())
 		{
 			KeepAir(true);
-			UMyUtils::Debug("PressAtk1 ... ");
 		}
 		switch (RightWeaponType)
 		{
 		case ERightWeaponType::Hook: // 钩子
 			{
 				bAtk_01_Active = true;
+				FHitResult HitResult;
+				HookLineTrace(HitResult, Atk_01_Distance);
+				TempHitLocation = HitResult.Location;
 				break;
 			}
 		case ERightWeaponType::Throw: // 投掷物
@@ -382,21 +454,34 @@ void AMyCharacter::Break_Atk1()
 {
 	if(bAtk_01_Active)
 	{
-		KeepAir(false);
+		if(!bSkillA_Active && !bAtk_02_Active)
+		{
+			KeepAir(false);
+		}
 		GetWorldTimerManager().ClearTimer(AtkTimerHandle);
 		bCanBreakAtk01 = false;
 		bAtk_01_Active = false;
-		
+		if(AtkHook1_NG && AtkHook1_NG->IsActive())
+		{
+			AtkHook1_NG->Deactivate();
+		}
 	}
-	// AtkNiagara->Deactivate();
+	
 }
 
 void AMyCharacter::End_Atk1()
 {
 	bCanBreakAtk01 = false;
 	bAtk_01_Active = false;
-	KeepAir(false);
-	// AtkNiagara->Deactivate();
+	if(!bSkillA_Active && !bAtk_02_Active)
+	{
+		KeepAir(false);
+	}
+	GetWorldTimerManager().ClearTimer(AtkTimerHandle);
+	if(AtkHook1_NG && AtkHook1_NG->IsActive())
+	{
+		AtkHook1_NG->Deactivate();
+	}
 }
 
 void AMyCharacter::Apply_Atk1()
@@ -404,9 +489,17 @@ void AMyCharacter::Apply_Atk1()
 	// 出特效
 	// FHitResult HitResult;
 	// HookLineTrace(HitResult, Atk_01_Distance);
-	// const FVector AtkEnd = HitResult.GetActor()->GetActorLocation();
-	// AtkNiagara->SetVariableVec3(FName("Location"), AtkEnd);
-	// AtkNiagara->Activate(true);
+	// const FVector AtkEnd = HitResult.Location;
+	if(AtkHook1_NG)
+	{
+		AtkHook1_NG->Activate();
+		if(TempHitLocation.IsNearlyZero())
+		{
+			TempHitLocation = GetActorForwardVector(Atk_01_Distance);
+		}
+		AtkHook1_NG->SetVariableVec3(FName("Location"), TempHitLocation);
+	}
+	// AtkNiagara->Activate();
 	AtkTimerDelegate.BindLambda([this]()
 	{
 		this->End_Atk1();
@@ -417,7 +510,8 @@ void AMyCharacter::Apply_Atk1()
 void AMyCharacter::PressAtk2()
 {
 	if(bAtk_01_Active && !bCanBreakAtk01) return;
-	if(bShootMode && !bAtk_02_Active && !bSkillA_Active) // 代表使用远程
+	if(bSkillA_Active && !bCanBreakSkillA) return;
+	if(bShootMode && !bAtk_02_Active ) // 代表使用远程
 	{
 		if(GetCharacterMovement()->IsFalling())
 		{
@@ -452,8 +546,10 @@ void AMyCharacter::Break_Atk2()
 {
 	if(bAtk_02_Active)
 	{
-		KeepAir(false);
-		UMyUtils::Debug("Break_Atk2 ... ");
+		if(!bAtk_01_Active && !bSkillA_Active)
+		{
+			KeepAir(false);
+		}
 		bCanBreakAtk02 = false;
 		bAtk_02_Active = false;
 	}
@@ -461,7 +557,10 @@ void AMyCharacter::Break_Atk2()
 
 void AMyCharacter::End_Atk2()
 {
-	KeepAir(false);
+	if(!bAtk_01_Active && !bSkillA_Active)
+	{
+		KeepAir(false);
+	}
 	bCanBreakAtk02 = false;
 	bAtk_02_Active = false;
 }

@@ -63,14 +63,21 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Niagara, meta = (AllowPrivateAccess = "true"))
 	UNiagaraComponent* HookLine;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
-	UNiagaraComponent* SkillANiagara; // A技能特效
+	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Niagara, meta = (AllowPrivateAccess = "true"))
+	// UNiagaraComponent* SkillANG;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Jump_2, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Niagara, meta = (AllowPrivateAccess = "true"))
 	UNiagaraComponent* Jump2Niagara; // 二段跳特效
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ATK, meta = (AllowPrivateAccess = "true"))
-	UNiagaraComponent* AtkNiagara; // 技能1特效
+	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Niagara, meta = (AllowPrivateAccess = "true"))
+	// UNiagaraComponent* AtkNG; // 技能1特效
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Niagara, meta = (AllowPrivateAccess = "true"))
+	UNiagaraComponent* SkillA_NG; // 
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Niagara, meta = (AllowPrivateAccess = "true"))
+	UNiagaraComponent* AtkHook1_NG; // 技能1特效
+
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputMappingContext* DefaultMappingContext;
@@ -135,7 +142,6 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Land, meta = (AllowPrivateAccess = "true"))
 	bool bCanLandBreak = false;
 	
-	
 
 	// shoot sett
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ShootMode, meta = (AllowPrivateAccess = "true"))
@@ -178,6 +184,15 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	// Skill_A
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
 	bool bSkillA_Active = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
+	bool bCanBreakSkillA = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
+	float SkillA_Duration = 2.f; // 持续时间
+	FTimerHandle SkillATimerHandle;
+	FTimerDelegate SkillATimerDelegate;
+	
+	
+	
 	// 时停
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
 	bool bGlobalTimeSlow = false;
@@ -193,8 +208,11 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	float Atk_01_Duration = 2.f; // 持续时间
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	float Atk_01_Distance = 500.f; // 距离
+	UPROPERTY(VisibleAnywhere, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	FVector TempHitLocation;
 	FTimerHandle AtkTimerHandle;
 	FTimerDelegate AtkTimerDelegate;
+	
 	
 	
 	
@@ -228,6 +246,7 @@ protected:
 	void CanBreak_JumpStart(); // 起跳可以打断时
 	UFUNCTION(BlueprintCallable)
 	void End_JumpStart(); // 起跳结束
+	UFUNCTION(BlueprintCallable)
 	void Break_JumpStart(); // 起跳打断
 	void ApplyJumpForce();
 	UFUNCTION(BlueprintCallable)
@@ -239,7 +258,13 @@ protected:
 	
 	
 	virtual void PressLeftClick(); // 按下左键
-	virtual void PressSkillA();  // 按下技能A
+	virtual void PressSkillA();  //
+	UFUNCTION(BlueprintCallable)
+	virtual void CanBreak_SkillA();  //
+	UFUNCTION(BlueprintCallable)
+	virtual void Break_SkillA();  //
+	UFUNCTION(BlueprintCallable)
+	virtual void End_SkillA();  // 
 
 	/**
 	 * 技能一
