@@ -3,6 +3,10 @@
 
 #include "Enemy.h"
 
+#include "HittedInfo.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "InymternsDemo/MyUtils.h"
+
 
 // Sets default values
 AEnemy::AEnemy()
@@ -16,6 +20,7 @@ void AEnemy::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	
 }
 
 // Called every frame
@@ -28,5 +33,39 @@ void AEnemy::Tick(float DeltaTime)
 void AEnemy::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
+}
+
+void AEnemy::Hit(FHittedInfo& HitIf)
+{
+	bHitted = true;
+	this->HitInfo = HitIf;
+	UCharacterMovementComponent* CharacterMovementComponent = GetCharacterMovement();
+	FVector ActorLocation = GetActorLocation();
+	FRotator Rotation = (ActorLocation - HitIf.HitDirection).Rotation();
+	FVector ForwardVector = UMyUtils::GetForwardVector(Rotation);
+	if(HitIf.HitForce > 2)
+	{
+		// bHitted = false;
+		CharacterMovementComponent->AddImpulse(FVector(ForwardVector.X * HitIf.HitForce * HitForceRate, ForwardVector.Y * HitIf.HitForce * HitForceRate, 0.7f * HitIf.HitForce * HitForceRate));
+	}else
+	{
+		if(CharacterMovementComponent->IsFalling())
+		{
+			if(!HitIf.FocusPosition.IsNearlyZero())
+			{
+				
+				SetActorLocation(HitIf.FocusPosition);
+			}
+			CharacterMovementComponent->Velocity = FVector(0,0,0);
+		}
+		CharacterMovementComponent->AddImpulse(FVector(ForwardVector.X  , ForwardVector.Y  , 0.2f  * HitForceRate));
+	}
+}
+
+void AEnemy::End_Hit()
+{
+	bHitted = false;
+	this->HitInfo.HitForce = 0.f;
+	UCharacterMovementComponent* CharacterMovementComponent = GetCharacterMovement();
 }
 

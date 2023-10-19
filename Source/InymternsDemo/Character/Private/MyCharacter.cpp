@@ -305,6 +305,10 @@ void AMyCharacter::End_Land()
 
 void AMyCharacter::EnableShootMode()
 {
+	// if(bMtgMode)
+	// {
+	// 	SetMontageMode(false);
+	// }
 	bShootMode = true;
 	CameraSmoothToggle(true);
 }
@@ -322,10 +326,15 @@ void AMyCharacter::PressLeftClick()
 {
 	if(bShootMode && RightWeaponType == ERightWeaponType::Hook)
 	{
-		DisableShootMode();
 		FHitResult HitResult;
+		if(bSkillA_Active && !bCanBreakSkillA) return;
+		if(bAtk_01_Active && !bCanBreakAtk01) return;
+		if(bAtk_02_Active && !bCanBreakAtk02) return;
 		if(bool bHit = HookLineTrace(HitResult, HookDistance)) 
 		{
+				Break_SkillA();
+				Break_Atk1();
+				Break_Atk2();
 			AActor* Actor = HitResult.GetActor();
 			if(AEnemy* Enemy = Cast<AEnemy>(Actor)) // 
 			{
@@ -364,14 +373,40 @@ void AMyCharacter::PressSkillA()
 		JpCount = JpCount == 0 ? 1 : JpCount;
 		KeepAir(true);
 		TArray<AActor*> Array;
+		TArray<AEnemy*> EnemyArray;
 		UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemy::StaticClass(), Array);
 		const FVector CurrentLocation = GetActorLocation();
-		for (const AActor* Actor : Array)
+		for (AActor* Actor : Array)
 		{
 			const FVector ActorLocation = Actor->GetActorLocation();
 			UNiagaraComponent* SpawnSystemAtLocation = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SkillA_NG->GetAsset(), CurrentLocation);
 			SpawnSystemAtLocation->SetVariableVec3(FName("TargetPosition"), ActorLocation);
+			if(AEnemy* EnemyOne = Cast<AEnemy>(Actor))
+			{
+				EnemyArray.Add(EnemyOne);
+			}
 		}
+		SkillATimerDelegateLoop.BindLambda([this, EnemyArray]()
+		{
+			if(SkillA_Current_Dot < SkillA_Max_Dot)
+			{
+				for (AEnemy* ATempEnemy : EnemyArray)
+				{
+					FHittedInfo HittedInfo;
+					HittedInfo.FocusPosition = GetActorLocation();
+					HittedInfo.HitForce = 1;
+					HittedInfo.FocusPosition = FVector(0,0,0);
+					ATempEnemy->Hit(HittedInfo);
+				}
+				SkillA_Current_Dot++;
+			}else
+			{
+				SkillA_Current_Dot = 0;
+				GetWorldTimerManager().ClearTimer(SkillATimerHandleLoop);
+			}
+		});
+		GetWorldTimerManager().SetTimer(SkillATimerHandleLoop, SkillATimerDelegateLoop, SkillA_Dot, true, 0.5f);
+
 		SkillATimerDelegate.BindLambda([this]()
 		{
 			this->End_SkillA();	
@@ -427,8 +462,25 @@ void AMyCharacter::PressAtk1()
 		case ERightWeaponType::Hook: // 钩子
 			{
 				bAtk_01_Active = true;
+				// SetMontageMode(true);
 				FHitResult HitResult;
-				HookLineTrace(HitResult, Atk_01_Distance);
+				bool bHit = HookLineTrace(HitResult, Atk_01_Distance);
+				if(bHit)
+				{
+					AActor* Actor = HitResult.GetActor();
+					TempEnemy = Cast<AEnemy>(Actor);
+					if(TempEnemy)
+					{
+						UCharacterMovementComponent* CharacterMovementComponent = TempEnemy->GetCharacterMovement();
+						if (CharacterMovementComponent->IsFalling())
+						{
+							CharacterMovementComponent->GravityScale = 0.f;
+						}
+					}
+				}else
+				{
+					TempEnemy = nullptr;
+				}
 				TempHitLocation = HitResult.Location;
 				break;
 			}
@@ -454,16 +506,25 @@ void AMyCharacter::Break_Atk1()
 {
 	if(bAtk_01_Active)
 	{
+		// SetMontageMode(false);
 		if(!bSkillA_Active && !bAtk_02_Active)
 		{
 			KeepAir(false);
 		}
 		GetWorldTimerManager().ClearTimer(AtkTimerHandle);
+		if( GetWorldTimerManager().IsTimerActive(AtkTimerHandleLoop))
+		{
+			GetWorldTimerManager().ClearTimer(AtkTimerHandleLoop);
+		}
 		bCanBreakAtk01 = false;
 		bAtk_01_Active = false;
 		if(AtkHook1_NG && AtkHook1_NG->IsActive())
 		{
 			AtkHook1_NG->Deactivate();
+		}
+		if(TempEnemy)
+		{
+			TempEnemy->GetCharacterMovement()->GravityScale = 1.f;
 		}
 	}
 	
@@ -473,23 +534,28 @@ void AMyCharacter::End_Atk1()
 {
 	bCanBreakAtk01 = false;
 	bAtk_01_Active = false;
+	// SetMontageMode(false);
 	if(!bSkillA_Active && !bAtk_02_Active)
 	{
 		KeepAir(false);
 	}
 	GetWorldTimerManager().ClearTimer(AtkTimerHandle);
+	if(GetWorldTimerManager().IsTimerActive(AtkTimerHandleLoop))
+	{
+		GetWorldTimerManager().ClearTimer(AtkTimerHandleLoop);
+	}
 	if(AtkHook1_NG && AtkHook1_NG->IsActive())
 	{
 		AtkHook1_NG->Deactivate();
+	}
+	if(TempEnemy)
+	{
+		TempEnemy->GetCharacterMovement()->GravityScale = 1.f;
 	}
 }
 
 void AMyCharacter::Apply_Atk1()
 {
-	// 出特效
-	// FHitResult HitResult;
-	// HookLineTrace(HitResult, Atk_01_Distance);
-	// const FVector AtkEnd = HitResult.Location;
 	if(AtkHook1_NG)
 	{
 		AtkHook1_NG->Activate();
@@ -498,6 +564,19 @@ void AMyCharacter::Apply_Atk1()
 			TempHitLocation = GetActorForwardVector(Atk_01_Distance);
 		}
 		AtkHook1_NG->SetVariableVec3(FName("Location"), TempHitLocation);
+		if(TempEnemy)
+		{
+			// Dot hit
+			AtkTimerDelegateLoop.BindLambda([this]()
+			{
+				FHittedInfo HitInfo;
+				HitInfo.HitDirection = GetActorLocation();
+				HitInfo.HitForce = 1.f;
+				HitInfo.FocusPosition = TempHitLocation;
+				TempEnemy->Hit(HitInfo);
+			});
+			GetWorldTimerManager().SetTimer(AtkTimerHandleLoop,AtkTimerDelegateLoop, Atk_01_Dot, true, 0.1f);
+		}
 	}
 	// AtkNiagara->Activate();
 	AtkTimerDelegate.BindLambda([this]()
@@ -522,6 +601,7 @@ void AMyCharacter::PressAtk2()
 		case ERightWeaponType::Hook: // 钩子
 			{
 				bAtk_02_Active = true;
+				// SetMontageMode(true);
 				break;
 			}
 		case ERightWeaponType::Throw: // 投掷物
@@ -546,29 +626,92 @@ void AMyCharacter::Break_Atk2()
 {
 	if(bAtk_02_Active)
 	{
+		bCanBreakAtk02 = false;
+		bAtk_02_Active = false;
+		// SetMontageMode(false);
 		if(!bAtk_01_Active && !bSkillA_Active)
 		{
 			KeepAir(false);
 		}
-		bCanBreakAtk02 = false;
-		bAtk_02_Active = false;
 	}
 }
 
 void AMyCharacter::End_Atk2()
 {
+	bCanBreakAtk02 = false;
+	bAtk_02_Active = false;
+	// SetMontageMode(false);
 	if(!bAtk_01_Active && !bSkillA_Active)
 	{
 		KeepAir(false);
 	}
-	bCanBreakAtk02 = false;
-	bAtk_02_Active = false;
 }
 
 void AMyCharacter::Apply_Atk2()
 {
+	TArray<FHitResult> HitResults;
+	TArray<AEnemy*> Enemies = FindEnemyInRadius(Atk_02_Distance);
+	if(!Enemies.IsEmpty())
+	{
+		for (AEnemy* Enemy : Enemies)
+		{
+			FHittedInfo HitInfo = FHittedInfo{GetActorLocation(), 3};
+			Enemy->Hit(HitInfo);
+		}
+	}
 }
 
+void AMyCharacter::Action_N()
+{
+	// TODO 待完善
+	if(!GetCharacterMovement()->IsFalling())
+	{
+		UMyUtils::Debug("Actions::N");
+		bAction_N_Active = true;
+	}
+}
+
+void AMyCharacter::End_Action_N()
+{
+	// TODO
+	bAction_N_Active = false;
+}
+
+
+TArray<AEnemy*> AMyCharacter::FindEnemyInRadius(float Radius)
+{
+	TArray<AEnemy*> FoundActors;
+	// 获取当前所在的世界
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		// 创建碰撞形状
+		FCollisionShape CollisionShape = FCollisionShape::MakeSphere(Radius);
+		// 设置查询参数
+		FCollisionQueryParams QueryParams;
+		QueryParams.AddIgnoredActor(this); // 忽略自身
+		// 进行碰撞检测
+		TArray<FHitResult> HitResults;
+		if (World->SweepMultiByChannel(HitResults, GetActorLocation(), GetActorLocation(), FQuat::Identity, ECC_Pawn, CollisionShape, QueryParams))
+		{
+			// 遍历检测到的结果
+			for (const FHitResult& HitResult : HitResults)
+			{
+				AActor* HitActor = HitResult.GetActor();
+				if (HitActor)
+				{
+					AEnemy* Enemy = Cast<AEnemy>(HitActor);
+					if(Enemy)
+					{
+						FoundActors.Add(Enemy);
+					}
+				}
+			}
+		}
+	}
+
+	return FoundActors;
+}
 
 void AMyCharacter::EnterShootModeCallBack()
 {
@@ -638,13 +781,45 @@ void AMyCharacter::DisableTimeSlow(const ETimeSlowType Type)
 	}
 }
 
-void AMyCharacter::CameraSmoothToggle(bool bZoomUp)
+// void AMyCharacter::SetMontageMode(bool bEnable)
+// {
+// 	if(bEnable)
+// 	{
+// 		bMtgMode = true;
+// 		if(bShootMode)
+// 		{
+// 			LeaveShootModeCallBack();
+// 		}
+// 	}else
+// 	{
+// 		bMtgMode = false;
+// 		CameraSmoothToggle(false, true);
+// 	}
+// }
+
+void AMyCharacter::CameraSmoothToggle(bool bZoomUp, bool bMT)
 {
+	// if(bMtgMode) return;
+
+	// if(bZoomUp)
+	// {
+	// 	if (FMath::Abs(CameraBoom->TargetArmLength - Min_Target_Length) < 1 )
+	// 	{
+	// 		return;
+	// 	}
+	// }else
+	// {
+	// 	if (FMath::Abs(CameraBoom->TargetArmLength - Max_Target_Length) < 1 )
+	// 	{
+	// 		return;
+	// 	}
+	// }
+	
 	if (!GetWorldTimerManager().IsTimerActive(ShootTimerHandle))
 	{
-		ShootTimerDelegate.BindLambda([this, bZoomUp]()
+		ShootTimerDelegate.BindLambda([this, bZoomUp, bMT]()
 		{
-			SetCameraTransition(bZoomUp);
+			SetCameraTransition(bZoomUp, bMT);
 		});
 		GetWorldTimerManager().SetTimer(ShootTimerHandle, ShootTimerDelegate, DT, true, 0);
 	}else
@@ -660,27 +835,33 @@ void AMyCharacter::CameraSmoothToggle(bool bZoomUp)
 	
 }
 
-void AMyCharacter::SetCameraTransition(const bool bZoomUp)
+void AMyCharacter::SetCameraTransition(const bool bZoomUp, bool bMT)
 {
-	const float DeltaTargetLength = FMath::Lerp(bZoomUp ? Max_Target_Length : Min_Target_Length, bZoomUp ? Min_Target_Length : Max_Target_Length, AddTime / ToggleDuration);
-	const FVector DeltaCameraVector = FMath::Lerp(bZoomUp ? CameraBoomStartVector : CameraBoomEndVector, bZoomUp ? CameraBoomEndVector : CameraBoomStartVector, AddTime / ToggleDuration);
-	CameraBoom->TargetArmLength = DeltaTargetLength;
-	CameraBoom->SetRelativeLocation(DeltaCameraVector);
-	AddTime += DT;
-	if(AddTime >= ToggleDuration)
 	{
-		AddTime = 0.f;
-		GetWorldTimerManager().ClearTimer(ShootTimerHandle);
-		CameraBoom->SetRelativeLocation(bZoomUp ? CameraBoomEndVector : CameraBoomStartVector);
-		CameraBoom->TargetArmLength = bZoomUp ? Min_Target_Length : Max_Target_Length;
-		if(bZoomUp)
+		const float DeltaTargetLength = FMath::Lerp(bZoomUp ? Max_Target_Length : Min_Target_Length, bZoomUp ? Min_Target_Length : Max_Target_Length, AddTime / ToggleDuration);
+		const FVector DeltaCameraVector = FMath::Lerp(bZoomUp ? CameraBoomStartVector : CameraBoomEndVector, bZoomUp ? CameraBoomEndVector : CameraBoomStartVector, AddTime / ToggleDuration);
+		CameraBoom->TargetArmLength = DeltaTargetLength;
+		CameraBoom->SetRelativeLocation(DeltaCameraVector);
+		AddTime += DT;
+		if(AddTime >= ToggleDuration)
 		{
-			EnterShootModeCallBack();
-		}else
-		{
-			LeaveShootModeCallBack();
+			AddTime = 0.f;
+			GetWorldTimerManager().ClearTimer(ShootTimerHandle);
+			CameraBoom->SetRelativeLocation(bZoomUp ? CameraBoomEndVector : CameraBoomStartVector);
+			CameraBoom->TargetArmLength = bZoomUp ? Min_Target_Length : Max_Target_Length;
+			if(!bMT)
+			{
+				if(bZoomUp)
+				{
+					EnterShootModeCallBack();
+				}else
+				{
+					LeaveShootModeCallBack();
+				}
+			}
 		}
 	}
+	
 }
 
 void AMyCharacter::ApplyHook(FVector Location, float Force, bool bPullSelf, bool bStatic)
@@ -792,6 +973,8 @@ void AMyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		EnhancedInputComponent->BindAction(Skill_A_Action, ETriggerEvent::Started, this, &AMyCharacter::PressSkillA);
 		EnhancedInputComponent->BindAction(Atk_01_Action, ETriggerEvent::Started, this, &AMyCharacter::PressAtk1);
 		EnhancedInputComponent->BindAction(Atk_02_Action, ETriggerEvent::Started, this, &AMyCharacter::PressAtk2);
+		EnhancedInputComponent->BindAction(N_Action, ETriggerEvent::Started, this, &AMyCharacter::Action_N);
+		EnhancedInputComponent->BindAction(N_Action, ETriggerEvent::Completed, this, &AMyCharacter::End_Action_N);
 	}
 	else
 	{

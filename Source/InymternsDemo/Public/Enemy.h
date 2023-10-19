@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HittedInfo.h"
 #include "Hookable.h"
 #include "Enemy.generated.h"
 
@@ -14,6 +15,12 @@ class INYMTERNSDEMO_API AEnemy : public AHookable
 public:
 	// Sets default values for this character's properties
 	AEnemy();
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	FHittedInfo HitInfo;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	bool bHitted = false;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float HitForceRate = 45000.f;
 
 protected:
 	// Called when the game starts or when spawned
@@ -25,4 +32,8 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	virtual void Hit(FHittedInfo& HitInfo);
+	UFUNCTION(BlueprintCallable)
+	virtual void End_Hit();
 };

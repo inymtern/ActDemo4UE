@@ -8,6 +8,7 @@
 #include "MyCharacter.generated.h"
 
 
+class AEnemy;
 class AHookable;
 class APostProcessVolume;
 class USpringArmComponent;
@@ -109,6 +110,9 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* Atk_02_Action;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* N_Action;
+
 	
 	
 
@@ -144,6 +148,8 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	
 
 	// shoot sett
+	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ShootMode, meta = (AllowPrivateAccess = "true"))
+	// bool bMtgMode = false;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ShootMode, meta = (AllowPrivateAccess = "true"))
 	bool bShootMode;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ShootMode, meta = (AllowPrivateAccess = "true"))
@@ -153,7 +159,7 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ShootMode, meta = (AllowPrivateAccess = "true"))
 	 float AddTime = 0;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ShootMode, meta = (AllowPrivateAccess = "true"))
-	 float Max_Target_Length = 300.f;
+	 float Max_Target_Length = 400.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ShootMode, meta = (AllowPrivateAccess = "true"))
 	 float Min_Target_Length = 100.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ShootMode, meta = (AllowPrivateAccess = "true"))
@@ -180,6 +186,7 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	// 右手 weapon
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Weapon, meta = (AllowPrivateAccess = "true"))
 	ERightWeaponType RightWeaponType = ERightWeaponType::Hook;
+	
 
 	// Skill_A
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
@@ -188,8 +195,15 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	bool bCanBreakSkillA = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
 	float SkillA_Duration = 2.f; // 持续时间
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
+	int SkillA_Max_Dot = 16;
+	int SkillA_Current_Dot = 1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill_A, meta = (AllowPrivateAccess = "true"))
+	float SkillA_Dot = 0.2f;
 	FTimerHandle SkillATimerHandle;
+	FTimerHandle SkillATimerHandleLoop;
 	FTimerDelegate SkillATimerDelegate;
+	FTimerDelegate SkillATimerDelegateLoop;
 	
 	
 	
@@ -207,11 +221,17 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	float Atk_01_Duration = 2.f; // 持续时间
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	float Atk_01_Dot = 0.3f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	float Atk_01_Distance = 500.f; // 距离
 	UPROPERTY(VisibleAnywhere, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	FVector TempHitLocation;
+	UPROPERTY(VisibleAnywhere, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	AEnemy* TempEnemy;
 	FTimerHandle AtkTimerHandle;
+	FTimerHandle AtkTimerHandleLoop;
 	FTimerDelegate AtkTimerDelegate;
+	FTimerDelegate AtkTimerDelegateLoop;
 	
 	
 	
@@ -221,9 +241,16 @@ class INYMTERNSDEMO_API AMyCharacter : public ACharacter
 	bool bAtk_02_Active = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	bool bCanBreakAtk02 = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	float Atk_02_Distance = 500.f;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = ATK, meta = (AllowPrivateAccess = "true"))
 	FVector FinalHitLocation;
+
+
+	// actions
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = ATK, meta = (AllowPrivateAccess = "true"))
+	bool bAction_N_Active = false;
 
 	
 public:
@@ -292,16 +319,20 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	void Apply_Atk2();
 	
+	void Action_N();
+	
+	void End_Action_N();
+	
 	virtual void EnableShootMode(); // 开启瞄准
 	virtual void DisableShootMode(); // 关闭瞄准
 	void EnterShootModeCallBack(); // 完全进入瞄准模式回调
 	void LeaveShootModeCallBack(); // 完全离开瞄准模式回调
 	void EnableTimeSlow(ETimeSlowType Type); // 开启时停
 	void DisableTimeSlow(ETimeSlowType Type); // 关闭时停
-
 	
-	void CameraSmoothToggle(bool bZoomUp); // 设置摄像机位置
-	void SetCameraTransition(bool bZoomUp); // 设置摄像机位置
+	// void SetMontageMode(bool bEnable);
+	void CameraSmoothToggle(bool bZoomUp, bool bMT = false); // 设置摄像机位置
+	void SetCameraTransition(bool bZoomUp, bool bMT = false); // 设置摄像机位置 bMT是否执行callback
 	
 	void ApplyHook(FVector Location, float Force, bool bPullSelf = true, bool bStatic = true); // 钩子执行
 
@@ -311,6 +342,7 @@ protected:
 	FVector GetControlForwardVector(const int Distance) const; 
 	bool HookLineTrace(FHitResult& HitResult, float Distance) const; // 射线检测
 	FVector CalcAtkEnd(float Distance) const;
+	TArray<AEnemy*> FindEnemyInRadius(float Radius);
 public:
 
 
